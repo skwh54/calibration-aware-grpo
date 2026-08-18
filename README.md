@@ -202,9 +202,32 @@ boundary inputs that the integrated trainer historically tolerated. This does
 not establish exhaustive equivalence.
 
 The source integration was extracted from the same trainer that completed
-recorded TPU v6e-8 calibration-aware smoke runs. A new smoke of release `v0.3.0`
-is still required before claiming that the repackaged integration itself has
-been revalidated end to end on TPU.
+recorded TPU v6e-8 calibration-aware smoke runs. A TPU run of the script below
+is still required before claiming that this packaged integration has been
+validated on TPU.
+
+## TPU runtime smoke
+
+`scripts/tpu_runtime_smoke.py` checks the package on a real JAX accelerator. It
+uses a small Flax NNX language model and the pinned Tunix mask, sharding,
+selective-log-softmax, and model split/merge operations. It then runs
+teacher-forced completion recomputation, builds the self-certainty,
+calibration, and overconfidence branches, differentiates the clipped policy
+loss, and applies one update.
+
+On a TPU VM:
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install "jax[tpu]==0.8.1" \
+  -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
+python -m pip install -e '.[tunix]'
+python scripts/tpu_runtime_smoke.py --output /tmp/tpu-runtime-smoke.json
+```
+
+The script requires a TPU backend unless `--allow-non-tpu` is supplied for a
+local preflight. It is small enough for a `v6e-1`; the recorded eight-device
+training topology is not required for this runtime check.
 
 ## Minimal example
 
