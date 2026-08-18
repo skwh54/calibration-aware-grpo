@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import numpy as np
-import pytest
-
 import jax
 import jax.numpy as jnp
+import numpy as np
+import pytest
 
 from calibration_aware_grpo.jax_tunix import (
     compute_dual_objective_pg_loss,
