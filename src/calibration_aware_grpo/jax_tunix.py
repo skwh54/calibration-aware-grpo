@@ -335,8 +335,9 @@ def compute_dual_objective_pg_loss(
     """Compute the clipped three-branch policy-gradient loss used on TPU.
 
     The coefficients are the two GRPO/PPO clipped-ratio candidates produced by
-    the surrounding Tunix learner. Token-mean aggregation matches the recorded
-    TPU experiment configuration.
+    the surrounding Tunix learner. This public function implements token-mean
+    aggregation; callers using another Tunix loss aggregation mode must provide
+    the corresponding reduction.
     """
 
     first = jnp.asarray(coef_1, dtype=jnp.float32)

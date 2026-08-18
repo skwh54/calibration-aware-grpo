@@ -137,7 +137,9 @@ generated completions through the same policy weights used for rollout and
 returns `[sample, completion_token, vocabulary]` logits. The returned branch
 fields map directly to the extended Tunix train example:
 `advantages_sc`, `advantages_cal`, `advantages_oc`,
-`calibration_lambda`, and `overconfidence_lambda`.
+`calibration_lambda`, and `overconfidence_lambda`. The public loss helper uses
+token-mean aggregation. A trainer configured for a different Tunix aggregation
+mode must supply the corresponding reduction.
 
 ## Validation
 
