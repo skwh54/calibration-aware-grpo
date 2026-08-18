@@ -3,10 +3,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-jax = pytest.importorskip("jax")
-jnp = pytest.importorskip("jax.numpy")
+import jax
+import jax.numpy as jnp
 
-from calibration_aware_grpo.jax_tunix import (  # noqa: E402
+from calibration_aware_grpo.jax_tunix import (
     compute_dual_objective_pg_loss,
     compute_self_certainty_from_logits,
     mean_token_scores,
