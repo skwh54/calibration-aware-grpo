@@ -1,9 +1,18 @@
 # Calibration-Aware GRPO
 
-A small, accelerator-independent reference implementation of calibration signals
-for grouped policy optimization. The package isolates the objective kernel used
-in a larger Qwen/JAX/Tunix research system so that its assumptions and failure
-modes can be tested on CPU without a TPU stack.
+This repository contains two layers extracted from a larger Qwen/JAX/Tunix
+research system:
+
+1. an accelerator-independent NumPy reference kernel for calibration-aware
+   grouped policy optimization; and
+2. the JAX objective wiring used at the TPU learner boundary, including
+   teacher-forced policy recomputation, token-level self-certainty, branch
+   assembly, and the clipped multi-branch policy-gradient loss.
+
+The full Qwen2.5-1.5B experiments ran on TPU v6e-8 with eight JAX devices. This
+package does not claim to be a standalone trainer: model construction, rollout
+generation, sharding, optimizer state, and checkpoint management remain Tunix
+framework responsibilities.
 
 ## Scope
 
@@ -17,14 +26,19 @@ Included:
 - an explicit overconfident-wrong penalty branch;
 - a linear warmup schedule for calibration and OC branch weights;
 - composition of self-certainty, calibration, and overconfidence advantages;
+- JAX self-certainty computation from teacher-forced completion logits;
+- a callback boundary for recomputing those logits under the rollout policy;
+- JAX assembly of self-certainty, calibration, and overconfidence branches;
+- the clipped three-branch policy-gradient loss used by the TPU learner;
 - invariant-focused NumPy tests.
 
 Not included:
 
-- a model, dataset, rollout engine, or full GRPO trainer;
-- JAX, Tunix, vLLM, checkpoint, sharding, or TPU integration;
+- a model, dataset, rollout engine, optimizer, or complete GRPO trainer;
+- Tunix `RLCluster`, Qwen model, vLLM, checkpoint, or sharding setup;
 - broad symbolic equivalence or an automatic mathematical verifier;
-- claims that CPU tests validate accelerator-specific training behavior.
+- claims that CPU/JAX tests validate accelerator-specific collectives,
+  checkpointing, or device placement.
 
 The verifier remains an explicit dependency supplied by the caller. This keeps
 semantic correctness labels separate from answer-frequency statistics. It must
@@ -67,7 +81,12 @@ python -m pip install -e '.[dev]'
 pytest -q
 ```
 
-Only NumPy is required at runtime.
+Only NumPy is required for the reference kernel. Install the JAX integration
+without the development tools with:
+
+```bash
+python -m pip install -e '.[jax]'
+```
 
 Development gates:
 
@@ -79,6 +98,49 @@ pytest -q
 python -m build
 ```
 
+## JAX/Tunix integration
+
+`calibration_aware_grpo.jax_tunix` exposes the objective boundary used by the
+integrated learner:
+
+```python
+from calibration_aware_grpo.jax_tunix import (
+    compute_dual_objective_pg_loss,
+    prepare_objective_from_policy,
+)
+
+branches = prepare_objective_from_policy(
+    recompute_policy=recompute_actor_logits,
+    prompt_tokens=prompt_tokens,
+    prompt_mask=prompt_mask,
+    completion_tokens=completion_tokens,
+    completion_mask=completion_mask,
+    completion_texts=completion_texts,
+    gold_answers=gold_answers,
+    group_size=7,
+    verifier=verifier,
+    mode="raw_signed_oc",
+    calibration_lambda=0.25,
+    overconfidence_lambda=0.1,
+)
+
+loss = compute_dual_objective_pg_loss(
+    coef_1=unclipped_ratio,
+    coef_2=clipped_ratio,
+    completion_mask=completion_mask,
+    branches=branches,
+)
+```
+
+The callback is the framework seam. In the TPU trainer it teacher-forces the
+generated completions through the same policy weights used for rollout and
+returns `[sample, completion_token, vocabulary]` logits. The returned branch
+fields map directly to the extended Tunix train example:
+`advantages_sc`, `advantages_cal`, `advantages_oc`,
+`calibration_lambda`, and `overconfidence_lambda`. The public loss helper uses
+token-mean aggregation. A trainer configured for a different Tunix aggregation
+mode must supply the corresponding reduction.
+
 ## Validation
 
 The initial CPU artifact passes **87 focused tests** covering nested answer
@@ -86,14 +148,23 @@ extraction, numeric equivalence, unique-plurality grouping, verifier batching
 and failure handling, all six calibration modes, support invariants, OC gating,
 branch composition, and lambda warmup.
 
+The JAX suite separately checks the self-certainty formula, masked sequence
+reduction, the teacher-forced recomputation boundary, public-kernel branch
+assembly, overconfident-wrong gating, clipped branch losses, and fail-closed
+shape validation on CPU.
+
 A separate local parity check compared this package against private trainer
 commit `8b79758` over 700 randomized valid-input groups, 4,200 mode cases, 84
 schedule cases, and five answer-canonicalization cases. All compared outputs
 matched within `1e-6`, providing randomized evidence of parity for those
 cases. The standalone kernel deliberately rejects ambiguous or non-finite
 boundary inputs that the integrated trainer historically tolerated. This does
-not establish exhaustive equivalence and does not validate TPU execution,
-distributed training, checkpointing, or rollout engines.
+not establish exhaustive equivalence.
+
+The source integration was extracted from the same trainer that completed
+recorded TPU v6e-8 calibration-aware smoke runs. A new smoke of release `v0.2.0`
+is still required before claiming that the repackaged integration itself has
+been revalidated end to end on TPU.
 
 ## Minimal example
 
@@ -149,11 +220,12 @@ implementation fails closed on a mismatch.
 
 ## Provenance and licensing
 
-This repository is a standalone extraction of calibration logic developed for a
-private Qwen GRPO/RLIF research implementation by Jaehyeon Shin. The extracted
-source lines are attributable to the same author in that repository's Git
-history. No Google Tunix source, TPU trainer, model weights, checkpoints,
-credentials, or private experiment outputs are vendored here.
+This repository is a standalone extraction of calibration logic and objective
+wiring developed for a private Qwen GRPO/RLIF research implementation by
+Jaehyeon Shin. The extracted source lines are attributable to the same author
+in that repository's Git history. No Google Tunix source, Qwen model code,
+model weights, checkpoints, credentials, or private experiment outputs are
+vendored here.
 
 The code in this repository is licensed under Apache License 2.0. External
 models, datasets, verifiers, and training frameworks retain their own licenses.
