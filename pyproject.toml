@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "calibration-aware-grpo"
-version = "0.2.0"
-description = "Calibration-aware grouped policy optimization kernel with JAX/Tunix objective wiring"
+version = "0.3.0"
+description = "Calibration-aware grouped policy optimization with JAX and Tunix runtime integration"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -27,6 +27,11 @@ classifiers = [
 [project.optional-dependencies]
 jax = [
   "jax>=0.8,<0.9",
+]
+tunix = [
+  "flax==0.11.1",
+  "google-tunix @ git+https://github.com/google/tunix@5318eca862f478f77b8a0d3f295a26acb849ae85",
+  "jax==0.8.1",
 ]
 dev = [
   "build>=1.2",
