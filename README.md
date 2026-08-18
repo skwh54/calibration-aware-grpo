@@ -7,7 +7,10 @@ research system:
    grouped policy optimization; and
 2. the JAX objective wiring used at the TPU learner boundary, including
    teacher-forced policy recomputation, token-level self-certainty, branch
-   assembly, and the clipped multi-branch policy-gradient loss.
+   assembly, and the clipped multi-branch policy-gradient loss; and
+3. an optional concrete Flax NNX/Tunix runtime bridge that selects the
+   rollout-matching model, enters the correct mesh, handles microbatching and
+   offload synchronization, and returns teacher-forced completion logits.
 
 The full Qwen2.5-1.5B experiments ran on TPU v6e-8 with eight JAX devices. This
 package does not claim to be a standalone trainer: model construction, rollout
@@ -28,6 +31,7 @@ Included:
 - composition of self-certainty, calibration, and overconfidence advantages;
 - JAX self-certainty computation from teacher-forced completion logits;
 - a callback boundary for recomputing those logits under the rollout policy;
+- a concrete Tunix actor-recomputation adapter with vanilla/vLLM safety checks;
 - JAX assembly of self-certainty, calibration, and overconfidence branches;
 - the clipped three-branch policy-gradient loss used by the TPU learner;
 - invariant-focused NumPy tests.
@@ -88,6 +92,13 @@ without the development tools with:
 python -m pip install -e '.[jax]'
 ```
 
+Install the concrete runtime bridge against the Tunix revision used by the
+recorded TPU trainer with:
+
+```bash
+python -m pip install -e '.[tunix]'
+```
+
 Development gates:
 
 ```bash
@@ -141,6 +152,26 @@ fields map directly to the extended Tunix train example:
 token-mean aggregation. A trainer configured for a different Tunix aggregation
 mode must supply the corresponding reduction.
 
+`calibration_aware_grpo.tunix_runtime.TunixLearnerPolicyRecompute` supplies a
+concrete implementation of that callback:
+
+```python
+from calibration_aware_grpo.jax_tunix import prepare_objective_from_policy
+from calibration_aware_grpo.tunix_runtime import TunixLearnerPolicyRecompute
+
+recompute_actor_logits = TunixLearnerPolicyRecompute.from_learner(learner)
+branches = prepare_objective_from_policy(
+    recompute_policy=recompute_actor_logits,
+    # prompt/completion tensors and objective arguments as above
+)
+```
+
+For the vanilla rollout engine, the adapter recomputes under the rollout model
+and resynchronizes parameters around CPU offload. For vLLM it uses the actor
+model and rejects asynchronous or CPU-offloaded layouts where the recomputed
+weights may not match generation. Explicit prompt and completion masks are
+preserved; padding IDs are never used to reconstruct attention.
+
 ## Validation
 
 The initial CPU artifact passes **87 focused tests** covering nested answer
@@ -153,6 +184,15 @@ reduction, the teacher-forced recomputation boundary, public-kernel branch
 assembly, overconfident-wrong gating, clipped branch losses, and fail-closed
 shape validation on CPU.
 
+The concrete Tunix bridge is tested through the same narrow operations used by
+Flax NNX and Tunix: prompt/completion assembly, next-token logit alignment,
+microbatch concatenation, rollout-engine model selection, mesh entry, and
+offload synchronization. The unit suite injects fake models and runtime
+operations so it remains runnable without a TPU or installing Tunix.
+The pinned optional stack was also installed in a clean environment and the
+real NNX split/merge, Tunix position/mask helpers, and selective log-softmax
+path completed on a tiny CPU model.
+
 A separate local parity check compared this package against private trainer
 commit `8b79758` over 700 randomized valid-input groups, 4,200 mode cases, 84
 schedule cases, and five answer-canonicalization cases. All compared outputs
@@ -162,7 +202,7 @@ boundary inputs that the integrated trainer historically tolerated. This does
 not establish exhaustive equivalence.
 
 The source integration was extracted from the same trainer that completed
-recorded TPU v6e-8 calibration-aware smoke runs. A new smoke of release `v0.2.0`
+recorded TPU v6e-8 calibration-aware smoke runs. A new smoke of release `v0.3.0`
 is still required before claiming that the repackaged integration itself has
 been revalidated end to end on TPU.
 
