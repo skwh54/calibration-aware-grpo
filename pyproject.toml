@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "calibration-aware-grpo"
-version = "0.1.0"
-description = "CPU reference implementation of calibration-aware grouped policy optimization signals"
+version = "0.2.0"
+description = "Calibration-aware grouped policy optimization kernel with JAX/Tunix objective wiring"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
 authors = [
   { name = "Jaehyeon Shin" },
 ]
@@ -18,7 +18,6 @@ dependencies = [
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
-  "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -26,8 +25,12 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+jax = [
+  "jax>=0.8,<0.9",
+]
 dev = [
   "build>=1.2",
+  "jax>=0.8,<0.9",
   "mypy>=1.15",
   "pytest>=8",
   "ruff>=0.11",
