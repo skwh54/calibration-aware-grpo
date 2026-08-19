@@ -1,23 +1,26 @@
 # Calibration-Aware GRPO
 
-This package contains calibration terms for grouped policy optimization and the
-JAX/Tunix code that connects them to policy recomputation. It provides:
+Calibration-aware reward terms for Group Relative Policy Optimization (GRPO),
+with a NumPy reference implementation and optional JAX/Tunix integration.
 
-- a NumPy reference implementation for answer grouping, calibration rewards,
-  and advantages;
-- JAX functions for self-certainty, objective assembly, and the clipped policy
-  loss; and
-- a Flax NNX/Tunix adapter for teacher-forced completion logits.
+The package treats answer frequency within a rollout group as an empirical
+confidence estimate, then compares it with a verifier score. It focuses on the
+objective logic rather than end-to-end training: model setup, rollout
+generation, data loading, optimization, and checkpointing are out of scope.
 
-It is not a complete trainer. Model construction, rollout generation, optimizer
-state, checkpointing, and datasets are supplied by the surrounding training
-system.
+## What's included
+
+- extraction and normalization of boxed numeric answers
+- unique-plurality grouping with batched verifier calls
+- six calibration reward modes
+- JAX helpers for self-certainty, objective assembly, and clipped policy loss
+- a Flax NNX/Tunix adapter for teacher-forced policy recomputation
 
 ## Objective modes
 
-For each rollout group, let `p` be the frequency of the unique most common
-answer, `y` its verifier score in `[0, 1]`, and `M_i` indicate that sample `i`
-has that answer. Groups with a tie for most common answer are skipped.
+For a rollout group, `p` is the frequency of the unique most common answer,
+`y` is its verifier score in `[0, 1]`, and `M_i` indicates whether sample `i`
+contains that answer. A group is skipped when its most common answer is tied.
 
 | Mode | Calibration signal |
 | --- | --- |
@@ -34,34 +37,27 @@ The overconfidence branch is
 A_oc_i = -1[majority wrong] M_i clip(ReLU(A_sc_i), 0, tau)
 ```
 
-where `A_sc_i` is the prompt-local self-certainty advantage. These are training
-signals rather than proper scoring rules; their effect must be evaluated
-empirically.
+where `A_sc_i` is the prompt-local self-certainty advantage. These are
+optimization signals, not proper scoring rules.
 
 ## Installation
 
-The reference implementation requires Python 3.11 or newer and NumPy.
+Python 3.11 or newer is required.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -e '.[dev]'
-pytest -q
+python -m pip install -e .
 ```
 
-Install only the JAX functions with:
+Optional dependencies:
 
 ```bash
 python -m pip install -e '.[jax]'
-```
-
-Install the Flax/Tunix adapter with the recorded dependency versions:
-
-```bash
 python -m pip install -e '.[tunix]'
 ```
 
-## Reference API
+## Basic usage
 
 ```python
 from calibration_aware_grpo import (
@@ -100,14 +96,14 @@ advantages = build_calibration_advantages(
 )
 ```
 
-The verifier receives one representative completion for each eligible group.
-Its score is reused only for completions with the same canonical answer, so it
-should grade final-answer correctness rather than formatting or reasoning
-style.
+The verifier receives one representative completion from each eligible group.
+Its score is shared only by completions with the same normalized answer, so the
+verifier should judge final-answer correctness rather than formatting or
+reasoning style.
 
 ## JAX and Tunix
 
-`prepare_objective_from_policy` recomputes completion logits and builds the
+`prepare_objective_from_policy` recomputes completion logits and assembles the
 self-certainty, calibration, and overconfidence branches:
 
 ```python
@@ -140,12 +136,10 @@ loss = compute_dual_objective_pg_loss(
 ```
 
 The recomputation callback returns logits with shape
-`[sample, completion_token, vocabulary]`. The branch fields correspond to
-`advantages_sc`, `advantages_cal`, `advantages_oc`, `calibration_lambda`, and
-`overconfidence_lambda` in the source trainer. The loss helper uses token-mean
+`[sample, completion_token, vocabulary]`. The loss helper uses token-mean
 aggregation.
 
-`TunixLearnerPolicyRecompute` supplies the callback from a Tunix learner:
+`TunixLearnerPolicyRecompute` creates the callback from a Tunix learner:
 
 ```python
 from calibration_aware_grpo.tunix_runtime import TunixLearnerPolicyRecompute
@@ -153,36 +147,15 @@ from calibration_aware_grpo.tunix_runtime import TunixLearnerPolicyRecompute
 recompute_actor_logits = TunixLearnerPolicyRecompute.from_learner(learner)
 ```
 
-For vanilla rollout, it uses the rollout model and synchronizes parameters when
-CPU offload is enabled. For vLLM, it uses the actor model and rejects async or
-CPU-offloaded configurations because recomputation might use different weights
-from generation. Prompt and completion masks are passed directly; padding token
-IDs are not used to infer attention.
+Vanilla rollout uses the rollout model and synchronizes parameters when CPU
+offload is enabled. The vLLM path uses the actor model and rejects async or
+CPU-offloaded configurations, where recomputation could use different weights
+from generation. Prompt and completion masks are passed through directly.
 
-## Validation
-
-The repository has 99 tests covering answer extraction and normalization,
-unique-plurality grouping, verifier batching, all six objective modes,
-overconfidence penalties, schedules, JAX branch assembly, clipped losses,
-masking, next-token alignment, microbatching, model selection, mesh entry, and
-offload synchronization.
-
-The pinned JAX 0.8.1, Flax 0.11.1, and Tunix stack was installed in a clean
-environment. A small Flax NNX model completed split/merge, Tunix mask and
-position construction, teacher-forced logit recomputation, and selective
-log-softmax on CPU.
-
-A separate parity check compared the reference functions with the source
-trainer over 700 randomized groups, 4,200 objective-mode cases, 84 schedule
-cases, and five answer-normalization cases. Compared values matched within
-`1e-6`. This is not an exhaustive equivalence proof.
-
-The published checks do not cover a complete training run, accelerator
-collectives, optimizer state, or checkpoint recovery.
-
-Development checks:
+## Development
 
 ```bash
+python -m pip install -e '.[dev]'
 ruff check src tests
 ruff format --check src tests
 mypy src
@@ -190,12 +163,6 @@ pytest -q
 python -m build
 ```
 
-## Provenance and license
+## License
 
-Jaehyeon Shin extracted and packaged this code from a private Qwen GRPO/RLIF
-research implementation that he also developed. No Tunix source, Qwen model
-code, model weights, checkpoints, credentials, private data, or experiment
-outputs are included.
-
-The repository is licensed under Apache License 2.0. External models, datasets,
-verifiers, and training frameworks retain their own licenses.
+Apache-2.0. See [LICENSE](LICENSE).

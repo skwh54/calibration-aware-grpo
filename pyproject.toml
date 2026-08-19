@@ -9,9 +9,6 @@ description = "Calibration-aware grouped policy optimization for JAX and Tunix"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
-authors = [
-  { name = "Jaehyeon Shin" },
-]
 dependencies = [
   "numpy>=1.26",
 ]
