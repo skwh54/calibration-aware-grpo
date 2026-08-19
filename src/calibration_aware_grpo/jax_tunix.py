@@ -1,13 +1,9 @@
-"""JAX/Tunix objective wiring extracted from the integrated TPU trainer.
+"""JAX helpers for calibration-aware GRPO objectives.
 
-The functions in this module cover the accelerator-side boundary of the public
-NumPy objective kernel: teacher-forced policy logits enter through a callback,
-self-certainty is computed from those logits, the public calibration kernel
-builds the grouped branches, and JAX computes the clipped policy-gradient loss.
-
-The module intentionally does not construct a Qwen model, Tunix ``RLCluster``,
-or checkpoint manager. Those are framework concerns. A Tunix learner can pass
-its actor-recomputation function through :func:`prepare_objective_from_policy`.
+Teacher-forced policy logits enter through a callback. This module computes
+self-certainty, assembles the grouped objective branches, and evaluates the
+clipped policy-gradient loss. Model construction and checkpoint management
+remain the caller's responsibility.
 """
 
 from __future__ import annotations
@@ -56,7 +52,7 @@ class PolicyRecompute(Protocol):
 
 @dataclass(frozen=True)
 class JaxObjectiveBranches:
-    """Per-sample reward and advantage branches passed to a Tunix train example."""
+    """Per-sample rewards and advantages for a policy update."""
 
     rewards_self_certainty: Array
     rewards_calibration: Array
@@ -70,7 +66,7 @@ class JaxObjectiveBranches:
     calibration_batch: CalibrationBatch
 
     def as_train_example_fields(self) -> dict[str, Array]:
-        """Return the fields added to the integrated trainer's TrainExample."""
+        """Return fields suitable for a Tunix ``TrainExample``."""
 
         return {
             "advantages": self.combined_advantages,
@@ -84,7 +80,7 @@ class JaxObjectiveBranches:
 
 @dataclass(frozen=True)
 class DualObjectiveLoss:
-    """JAX loss outputs matching the integrated TPU objective branches."""
+    """Outputs from the calibration-aware policy loss."""
 
     loss: Array
     per_token_loss: Array
@@ -162,7 +158,7 @@ def prepare_objective_branches(
 
     ``completion_logits`` must come from teacher-forced recomputation under the
     rollout policy. The verifier receives only one representative completion per
-    eligible unique-plurality cluster through the public NumPy kernel.
+    eligible unique-plurality cluster through the NumPy implementation.
     """
 
     if not np.isfinite(calibration_lambda) or calibration_lambda < 0:

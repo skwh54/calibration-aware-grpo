@@ -105,6 +105,7 @@ def test_escaped_close_brace_does_not_end_box_early():
         "x" * 100_001,
         r"\boxed{" * 65 + "1" + "}" * 65,
     ],
+    ids=["too_long", "too_many_box_markers"],
 )
 def test_over_budget_completion_is_unparsable(text):
     key, parsable = canonicalize_answer_key(text, unparsable_id="large")

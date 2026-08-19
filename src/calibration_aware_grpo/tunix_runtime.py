@@ -1,11 +1,8 @@
-"""Concrete Tunix actor-recomputation bridge used by the TPU integration.
+"""Flax NNX/Tunix adapter for teacher-forced policy recomputation.
 
-Unlike :mod:`calibration_aware_grpo.jax_tunix`, this module knows about the
-runtime operations supplied by Flax NNX and Google Tunix. Imports remain lazy so
-the NumPy/JAX reference package can be installed without the full trainer stack.
-The production loader uses the same Tunix APIs as the integrated Qwen trainer;
-tests inject small fake operations and models to validate the control flow on
-CPU.
+Imports remain lazy so the core package can be installed without the full Tunix
+stack. Tests use small fake operations and models to exercise the control flow
+on CPU.
 """
 
 from __future__ import annotations
@@ -69,10 +66,10 @@ class PolicyRecomputeSource:
 
 
 def load_tunix_runtime_ops() -> TunixRuntimeOps:
-    """Load the Flax/Tunix APIs pinned by the original TPU trainer.
+    """Load the Flax/Tunix APIs used by the optional Tunix integration.
 
     Raises a focused import error instead of making Tunix a mandatory dependency
-    of the reference package.
+    of the core package.
     """
 
     try:
