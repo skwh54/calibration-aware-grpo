@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "calibration-aware-grpo"
-version = "0.3.1"
-description = "Calibration-aware grouped policy optimization with JAX and Tunix runtime integration"
+version = "0.3.2"
+description = "Calibration-aware grouped policy optimization for JAX and Tunix"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
